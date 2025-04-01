@@ -1,0 +1,86 @@
+# =============================
+# Node.js / React 專案 (.gitignore)
+# =============================
+
+# Node modules
+node_modules/
+# Production build
+build/
+dist/
+# dotenv 環境變數
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+# Vite 快取
+.vite/
+# Log files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+# VSCode
+.vscode/
+
+# =============================
+# Golang 專案 (.gitignore)
+# =============================
+
+# 可執行檔與中間檔
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# 編譯快取
+*.a
+
+# 環境設定與開發檔
+.env
+.env.*
+*.log
+
+# Go module / cache
+vendor/
+bin/
+tmp/
+coverage.out
+
+# =============================
+# 作業系統自動產生的檔案
+# =============================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# =============================
+# 編輯器相關
+# =============================
+
+.idea/
+*.swp
+*.swo
+*.bak
+*.tmp
+*.log
+*.log.*
+
+# JetBrains
+*.iml
+out/
+
+# Visual Studio Code
+.vscode/
+.history/
