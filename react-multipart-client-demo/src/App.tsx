@@ -108,7 +108,8 @@ function UploadContainer() {
   const uploadPart = async (
     presignedUrl: string,
     partNumber: number,
-    chunk: Blob
+    chunk: Blob,
+    totalParts: number
   ): Promise<UploadPart> => {
     try {
       console.log(`Uploading part ${partNumber} to URL:`, presignedUrl);
@@ -126,12 +127,6 @@ function UploadContainer() {
                         xhr.getResponseHeader('ETag') || 
                         xhr.getResponseHeader('x-amz-etag');
             
-            console.log('Response headers:', {
-              etag: xhr.getResponseHeader('etag'),
-              'x-amz-etag': xhr.getResponseHeader('x-amz-etag'),
-              'all-headers': xhr.getAllResponseHeaders()
-            });
-
             if (etag) {
               resolve({
                 ETag: etag,
@@ -151,8 +146,15 @@ function UploadContainer() {
 
         xhr.upload.onprogress = (e) => {
           if (e.lengthComputable) {
-            const percentComplete = (e.loaded / e.total) * 100;
-            console.log(`Part ${partNumber} progress: ${percentComplete.toFixed(2)}%`);
+            // Calculate progress for this part
+            const partProgress = (e.loaded / e.total) * 100;
+            // Calculate overall progress
+            const overallProgress = Math.round(
+              ((partNumber - 1 + (e.loaded / e.total)) / totalParts) * 100
+            );
+            console.log(`Part ${partNumber} progress: ${partProgress.toFixed(2)}%`);
+            console.log(`Overall progress: ${overallProgress}%`);
+            dispatch(updateProgress(overallProgress));
           }
         };
 
@@ -224,7 +226,8 @@ function UploadContainer() {
     if (!file || !fileInfo) return;
 
     dispatch(setIsUploading(true));
-    dispatch(resetUpload());
+    dispatch(setError(null));
+    dispatch(updateProgress(0));
     abortControllerRef.current = new AbortController();
 
     try {
@@ -235,6 +238,7 @@ function UploadContainer() {
       // 2. Calculate parts
       const chunks = Math.ceil(file.size / CHUNK_SIZE);
       const uploadedParts: UploadPart[] = [];
+      let totalProgress = 0;
 
       // 3. Upload each part
       for (let i = 0; i < chunks; i++) {
@@ -247,16 +251,18 @@ function UploadContainer() {
         const presignedUrl = await getPresignedUrl(newUploadId, partNumber, fileInfo.name);
         
         // Upload the part
-        const part = await uploadPart(presignedUrl, partNumber, chunk);
+        const part = await uploadPart(presignedUrl, partNumber, chunk, chunks);
         uploadedParts.push(part);
         dispatch(addUploadedPart(part));
 
-        const progress = Math.round(((i + 1) / chunks) * 100);
-        dispatch(updateProgress(progress));
+        totalProgress = Math.round(((i + 1) / chunks) * 100);
+        dispatch(updateProgress(totalProgress));
+        console.log('Upload progress:', totalProgress);
       }
 
       // 4. Complete multipart upload
       await completeMultipartUpload(newUploadId, uploadedParts, fileInfo.name);
+      dispatch(updateProgress(100));
       dispatch(setIsUploading(false));
       dispatch(setError(null));
     } catch (err) {
@@ -269,6 +275,7 @@ function UploadContainer() {
         dispatch(setError('Upload failed'));
       }
       dispatch(setIsUploading(false));
+      dispatch(updateProgress(0));
     } finally {
       abortControllerRef.current = null;
     }
@@ -299,32 +306,38 @@ function UploadContainer() {
   );
 }
 
+function MainContent() {
+  return (
+    <Box
+      sx={{
+        minHeight: '100vh',
+        py: 8,
+        px: 2,
+        bgcolor: 'background.default'
+      }}
+    >
+      <Container maxWidth="md">
+        <Box sx={{ textAlign: 'center', mb: 6 }}>
+          <Typography variant="h2" component="h1" gutterBottom>
+            S3 文件上傳
+          </Typography>
+          <Typography variant="h6" color="text.secondary">
+            支持大文件分片上傳，可暫停續傳
+          </Typography>
+        </Box>
+        <UploadContainer />
+      </Container>
+    </Box>
+  );
+}
+
 function App() {
   return (
-    <ThemeProvider theme={theme}>
-      <Provider store={store}>
-        <Box
-          sx={{
-            minHeight: '100vh',
-            py: 8,
-            px: 2,
-            bgcolor: 'background.default'
-          }}
-        >
-          <Container maxWidth="md">
-            <Box sx={{ textAlign: 'center', mb: 6 }}>
-              <Typography variant="h2" component="h1" gutterBottom>
-                S3 文件上傳
-              </Typography>
-              <Typography variant="h6" color="text.secondary">
-                支持大文件分片上傳，可暫停續傳
-              </Typography>
-            </Box>
-            <UploadContainer />
-          </Container>
-        </Box>
-      </Provider>
-    </ThemeProvider>
+    <Provider store={store}>
+      <ThemeProvider theme={theme}>
+        <MainContent />
+      </ThemeProvider>
+    </Provider>
   );
 }
 
