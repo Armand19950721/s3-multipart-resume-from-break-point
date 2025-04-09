@@ -28,11 +28,15 @@ interface UploadPart {
   PartNumber: number;
 }
 
+interface CustomAbortController extends AbortController {
+  xhr?: XMLHttpRequest;
+}
+
 function UploadContainer() {
   const dispatch = useDispatch();
   const [isDragging, setIsDragging] = useState(false);
   const currentFileRef = useRef<File | null>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
+  const abortControllerRef = useRef<CustomAbortController | null>(null);
   
   const { fileInfo, uploadProgress, isUploading, error, uploadId } = useSelector((state: RootState) => state.upload);
 
@@ -158,6 +162,11 @@ function UploadContainer() {
           }
         };
 
+        // Store the XHR instance for potential cancellation
+        if (abortControllerRef.current) {
+          abortControllerRef.current.xhr = xhr;
+        }
+
         xhr.send(chunk);
       });
 
@@ -282,10 +291,27 @@ function UploadContainer() {
   };
 
   const handleCancel = async () => {
-    if (uploadId && fileInfo) {
-      abortControllerRef.current?.abort();
-      await abortMultipartUpload(uploadId, fileInfo.name);
-      dispatch(resetUpload());
+    if (!abortControllerRef.current) return;
+
+    try {
+      // Abort the current XHR request if it exists
+      if (abortControllerRef.current.xhr) {
+        abortControllerRef.current.xhr.abort();
+      }
+
+      // If we have an uploadId, abort the multipart upload on the server
+      if (uploadId && fileInfo) {
+        await abortMultipartUpload(uploadId, fileInfo.name);
+      }
+
+      // Reset the upload state
+      dispatch(setIsUploading(false));
+      dispatch(updateProgress(0));
+      dispatch(setError(null));
+      dispatch(setUploadId(''));
+    } catch (error) {
+      console.error('Error during cancellation:', error);
+      dispatch(setError('Failed to cancel upload'));
     }
   };
 

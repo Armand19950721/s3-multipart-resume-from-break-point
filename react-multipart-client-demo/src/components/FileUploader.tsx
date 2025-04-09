@@ -1,21 +1,11 @@
-import { useCallback, useState, useRef } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
-import { setFile, setError, setIsUploading, updateProgress, setUploadId, addUploadedPart, resetUpload } from '../store/uploadSlice';
-import type { RootState } from '../store';
-import axios from 'axios';
+import { useRef } from 'react';
+import { useDispatch } from 'react-redux';
+import { resetUpload } from '../store/uploadSlice';
 import { Box, Paper, Typography, Button, LinearProgress, IconButton } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import CloseIcon from '@mui/icons-material/Close';
 import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile';
-
-const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB chunks
-const API_BASE_URL = 'http://localhost:8080';
-
-interface UploadPart {
-  ETag: string;
-  PartNumber: number;
-}
 
 interface FileInfo {
   name: string;
@@ -37,7 +27,8 @@ interface FileUploaderProps {
   error: string | null;
 }
 
-const DropZone = styled(Paper)(({ theme }) => ({
+// Styled Components
+const StyledDropZone = styled(Paper)(({ theme }) => ({
   padding: theme.spacing(4),
   border: `2px dashed ${theme.palette.divider}`,
   backgroundColor: theme.palette.background.default,
@@ -48,6 +39,108 @@ const DropZone = styled(Paper)(({ theme }) => ({
     backgroundColor: theme.palette.action.hover,
   },
 }));
+
+const FilePreviewContainer = styled(Paper)(({ theme }) => ({
+  marginTop: theme.spacing(2),
+  padding: theme.spacing(2),
+}));
+
+const FileInfoContainer = styled(Box)({
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  marginBottom: 2,
+});
+
+const FileIconWrapper = styled(Box)(({ theme }) => ({
+  padding: theme.spacing(1),
+  backgroundColor: theme.palette.primary.light,
+  borderRadius: theme.shape.borderRadius,
+}));
+
+const ErrorMessage = styled(Paper)(({ theme }) => ({
+  marginTop: theme.spacing(2),
+  padding: theme.spacing(2),
+  backgroundColor: theme.palette.error.light,
+}));
+
+// Sub-components
+const UploadIcon = () => (
+  <CloudUploadIcon
+    sx={{
+      fontSize: 48,
+      color: 'primary.main',
+      mb: 2,
+    }}
+  />
+);
+
+const FilePreview = ({ fileInfo, isUploading, onRemove }: { 
+  fileInfo: FileInfo; 
+  isUploading: boolean; 
+  onRemove: () => void;
+}) => (
+  <FilePreviewContainer>
+    <FileInfoContainer>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 0 }}>
+        <FileIconWrapper>
+          <InsertDriveFileIcon sx={{ color: 'primary.main' }} />
+        </FileIconWrapper>
+        <Box sx={{ minWidth: 0 }}>
+          <Typography variant="subtitle2" noWrap>
+            {fileInfo.name}
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            {(fileInfo.size / (1024 * 1024)).toFixed(2)} MB
+          </Typography>
+        </Box>
+      </Box>
+      {!isUploading && (
+        <IconButton
+          size="small"
+          onClick={onRemove}
+          sx={{ color: 'text.secondary', '&:hover': { color: 'error.main' } }}
+        >
+          <CloseIcon />
+        </IconButton>
+      )}
+    </FileInfoContainer>
+  </FilePreviewContainer>
+);
+
+const UploadProgress = ({ progress, onCancel }: { 
+  progress: number; 
+  onCancel: () => void;
+}) => (
+  <Box sx={{ mt: 2 }}>
+    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+      <Typography variant="body2" color="primary">
+        正在上傳 {progress}%
+      </Typography>
+    </Box>
+    <LinearProgress variant="determinate" value={progress} sx={{ mb: 2 }} />
+    <Button
+      fullWidth
+      variant="outlined"
+      color="error"
+      onClick={onCancel}
+      startIcon={<CloseIcon />}
+    >
+      取消上傳
+    </Button>
+  </Box>
+);
+
+const ErrorDisplay = ({ error }: { error: string }) => (
+  <ErrorMessage>
+    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+      <CloseIcon sx={{ color: 'error.main', fontSize: 20 }} />
+      <Typography variant="body2" color="error.main">
+        {error}
+      </Typography>
+    </Box>
+  </ErrorMessage>
+);
 
 export const FileUploader: React.FC<FileUploaderProps> = ({
   handleDrop,
@@ -71,7 +164,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
 
   return (
     <Box sx={{ width: '100%' }}>
-      <DropZone
+      <StyledDropZone
         elevation={0}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
@@ -90,13 +183,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
         />
         
         <Box sx={{ textAlign: 'center' }}>
-          <CloudUploadIcon
-            sx={{
-              fontSize: 48,
-              color: 'primary.main',
-              mb: 2,
-            }}
-          />
+          <UploadIcon />
           
           <Button
             variant="contained"
@@ -113,79 +200,36 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
             支持所有文件類型 · 單個文件最大 5GB
           </Typography>
         </Box>
-      </DropZone>
+      </StyledDropZone>
 
       {fileInfo && (
-        <Paper sx={{ mt: 2, p: 2 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: isUploading ? 2 : 0 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 0 }}>
-              <Box sx={{ p: 1, bgcolor: 'primary.50', borderRadius: 1 }}>
-                <InsertDriveFileIcon sx={{ color: 'primary.main' }} />
-              </Box>
-              <Box sx={{ minWidth: 0 }}>
-                <Typography variant="subtitle2" noWrap>
-                  {fileInfo.name}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  {(fileInfo.size / (1024 * 1024)).toFixed(2)} MB
-                </Typography>
-              </Box>
-            </Box>
-            {!isUploading && (
-              <IconButton
-                size="small"
-                onClick={() => dispatch(resetUpload())}
-                sx={{ color: 'text.secondary', '&:hover': { color: 'error.main' } }}
-              >
-                <CloseIcon />
-              </IconButton>
-            )}
-          </Box>
-
-          {isUploading && (
-            <Box sx={{ mt: 2 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                <Typography variant="body2" color="primary">
-                  正在上傳 {uploadProgress}%
-                </Typography>
-              </Box>
-              <LinearProgress variant="determinate" value={uploadProgress} sx={{ mb: 2 }} />
-              <Button
-                fullWidth
-                variant="outlined"
-                color="error"
-                onClick={handleCancel}
-                startIcon={<CloseIcon />}
-              >
-                取消上傳
-              </Button>
-            </Box>
-          )}
-
-          {!isUploading && (
-            <Button
-              fullWidth
-              variant="contained"
-              onClick={handleUpload}
-              startIcon={<CloudUploadIcon />}
-              sx={{ mt: 2 }}
-            >
-              開始上傳
-            </Button>
-          )}
-        </Paper>
+        <FilePreview
+          fileInfo={fileInfo}
+          isUploading={isUploading}
+          onRemove={() => dispatch(resetUpload())}
+        />
       )}
 
-      {error && (
-        <Paper sx={{ mt: 2, p: 2, bgcolor: 'error.light' }}>
-          <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
-            <CloseIcon sx={{ color: 'error.main', fontSize: 20 }} />
-            <Typography variant="body2" color="error.main">
-              {error}
-            </Typography>
-          </Box>
-        </Paper>
+      {isUploading && (
+        <UploadProgress
+          progress={uploadProgress}
+          onCancel={handleCancel}
+        />
       )}
+
+      {!isUploading && fileInfo && (
+        <Button
+          fullWidth
+          variant="contained"
+          onClick={handleUpload}
+          startIcon={<CloudUploadIcon />}
+          sx={{ mt: 2 }}
+        >
+          開始上傳
+        </Button>
+      )}
+
+      {error && <ErrorDisplay error={error} />}
     </Box>
   );
 }; 
